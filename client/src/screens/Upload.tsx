@@ -17,7 +17,10 @@ function dealNote(have: number, players: number): string {
   const pile = `${have} photos for ${players} player${players === 1 ? '' : 's'}`;
   if (have < players) return `${pile} — some photos get shared.`;
   if (have === players) return `${pile} — everyone gets their own.`;
-  return `${pile} — everyone gets their own, the spares sit this round out.`;
+  // Only ever a claim about this round: the pile is emptied at the next "Next round", so the
+  // spares are not banked for later and must not sound like they are.
+  const spare = have - players;
+  return `${pile} — everyone gets their own, and ${spare} ${spare === 1 ? 'goes' : 'go'} unused.`;
 }
 
 export function Upload() {
@@ -86,9 +89,13 @@ export function Upload() {
   const count = `${have} photo${have === 1 ? '' : 's'}`;
   /** The server re-checks this at the deal, so don't offer a button it is going to refuse. */
   const tooFew = playerCount < MIN_PLAYERS_TO_START;
-  /** Not a requirement any more -- just the number a host who wants one each is aiming for. */
+  /**
+   * Not a requirement any more -- just the number a host who wants one each is aiming for, so it
+   * only earns its place once there is a pile to compare against. On an empty screen it reads as
+   * the target this change exists to remove.
+   */
   const uniqueHint =
-    !tooFew && have < playerCount
+    !tooFew && have > 0 && have < playerCount
       ? `Make it ${playerCount} and everyone gets a different one.`
       : null;
 
@@ -103,7 +110,14 @@ export function Upload() {
       setPhotoError(`The pile is full at ${MAX_POOL_IMAGES} — drop one before adding another.`);
       return;
     }
-    setPhotoError(null);
+    // A multi-select bigger than the room left in the pile loses its tail below, and a batch with
+    // a bad photo in it can end under the cap -- so the only honest moment to say so is now.
+    const dropped = files.length - slots;
+    setPhotoError(
+      dropped > 0
+        ? `Only ${slots} more would fit — ${dropped} ${dropped === 1 ? 'photo was' : 'photos were'} left out.`
+        : null,
+    );
     setUploading(true);
     try {
       // Room left in the pile is counted once per batch: the server is the real gatekeeper, this
@@ -233,11 +247,16 @@ export function Upload() {
           </label>
         )}
 
+        {/* Stands in the picker's shoes, height and all: a host culling a full pile is scrolled
+            down in the grid, and 200px vanishing above it would move the next ✕ under their
+            thumb onto a different photo. */}
         {full && !uploading && (
-          <p className="hint">
-            The pile is full — {MAX_POOL_IMAGES} photos is the limit. Drop one to make room for
-            another.
-          </p>
+          <div className="x-drop-note">
+            <p className="hint">
+              The pile is full — {MAX_POOL_IMAGES} photos is the limit. Drop one to make room for
+              another.
+            </p>
+          </div>
         )}
 
         {/* Disabled while a batch is in flight: a label cannot activate a disabled control, so
@@ -264,7 +283,15 @@ export function Upload() {
           <div className="x-photo-grid">
             {room.pool.map((img, i) => (
               <div className="x-photo" key={img.id}>
-                <img className="x-photo-img" src={previews[img.id] ?? img.imageUrl} alt="" />
+                {/* The fallback is a full-size photo in a 160px square, and a reload that loses
+                    every preview would otherwise fetch 20 of them at once. */}
+                <img
+                  className="x-photo-img"
+                  src={previews[img.id] ?? img.imageUrl}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                />
                 <button
                   type="button"
                   className="x-photo-remove"

@@ -839,8 +839,8 @@ input {
 /* ----------------------------------------------------------- photo pool */
 
 /*
- * The host's upload grid. Every slot the round needs is on screen from the first paint,
- * filled or not, so the grid holds its size instead of jumping as photos land one by one.
+ * The host's pile: one square per photo plus one trailing "+" slot, so the grid grows as
+ * photos land. The "+" sits after every photo, so gaining or losing it never moves a thumbnail.
  */
 .x-photo-grid {
   /* like .meme: never let .screen-body squash it, the body scrolls instead */
@@ -848,6 +848,21 @@ input {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: var(--s2);
+}
+
+/*
+ * What replaces the .file-drop at the cap, at the same 200px, so swapping the picker for the
+ * full-pile sentence does not shove the grid up under the host's thumb mid-cull. Deliberately
+ * not tappable -- a dashed box that opened a picker only to refuse the photo would be a trap.
+ */
+.x-drop-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 200px;
+  padding: var(--s5);
+  text-align: center;
 }
 
 .x-photo,

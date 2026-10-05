@@ -176,7 +176,7 @@ export function Lobby() {
             </button>
             {canStart ? (
               <p className="hint">
-                You pick one photo per player, then they get dealt out at random.
+                Pick as many photos as you like — they get dealt out at random.
               </p>
             ) : (
               <p className="hint">

@@ -62,8 +62,8 @@ export function Editor() {
           <div className="empty">
             <p className="subtitle">You walked in after the deal.</p>
             <p className="hint">
-              Every photo already has someone writing on it. Next round you get one of your own —
-              stick around and judge these ones first.
+              The photos were dealt before you got here. Next round you get one too — stick around
+              and judge these ones first.
             </p>
           </div>
         ) : (

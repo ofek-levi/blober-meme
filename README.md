@@ -143,13 +143,19 @@ important is decided on a phone.
 
 1. **Lobby** — someone creates a room and shares the 4-character code. The host can set the
    two timers. Two players minimum.
-2. **Create** — everyone picks a photo and types a top and bottom caption. Photos are resized
-   and compressed in the browser before upload, so a 4MB phone photo goes up as ~400KB. The
-   phase ends early the moment everybody has submitted; you can keep editing until it does.
-3. **Vote** — all the memes, shuffled, with the authors hidden. You can't vote for your own.
+2. **Upload** — the host alone picks the photos, as many as they like, and nobody else gets a
+   say. Photos are resized and compressed in the browser before upload, so a 4MB phone photo
+   goes up as ~400KB. No clock on this one; the host taps "Deal them out" when the pile looks
+   right.
+3. **Create** — every photo is dealt out at random before any photo is dealt twice, so with
+   fewer photos than players some get shared, and with more the spares go unused. You caption
+   whatever you were handed. The phase ends early the moment everybody has submitted; you can
+   keep editing until it does.
+4. **Vote** — all the memes, shuffled, with the authors hidden. You can't vote for your own.
    Ends early once everyone who can vote has.
-4. **Results** — winner, the rest ranked by votes, and the running scoreboard. +1 per vote
-   received. The host starts another round or goes back to the lobby; scores carry over.
+5. **Results** — winner, the rest ranked by votes, and the running scoreboard. +1 per vote
+   received. The host starts another round or goes back to the lobby; scores carry over. The
+   next round starts from an empty pile — spare photos are not kept.
 
 Phases also advance on their timers, and the server re-checks "is everyone done?" when someone
 disconnects, so one person losing signal can't stall the round.
