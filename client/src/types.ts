@@ -30,7 +30,7 @@ export const VOTE_SECONDS_OPTIONS = [30, 45, 60, 90, 120];
 
 /* ------------------------------------------------------------------- state */
 
-export type Phase = 'lobby' | 'create' | 'vote' | 'results';
+export type Phase = 'lobby' | 'upload' | 'create' | 'vote' | 'results';
 
 export interface Player {
   id: string;
@@ -43,6 +43,20 @@ export interface Player {
 export interface RoomSettings {
   createSeconds: number;
   voteSeconds: number;
+}
+
+/** One of the host's photos for this round, before it has been dealt to anyone. */
+export interface PoolImage {
+  id: string;
+  /** Path on the server, already cache-busted for this round. */
+  imageUrl: string;
+}
+
+/** Which of the host's photos a player has to caption this round. */
+export interface Assignment {
+  playerId: string;
+  imageId: string;
+  imageUrl: string;
 }
 
 export interface PublicSubmission {
@@ -74,6 +88,17 @@ export interface RoomState {
   /** Server clock at send time, so clients can correct for device clock skew. */
   serverNow: number;
 
+  /** During `upload`: the host's photos so far, and how many this round still needs. */
+  pool: PoolImage[];
+  /**
+   * How many photos this round needs -- one per seat in the room, including a seat whose
+   * phone is briefly away. Counting seats rather than live sockets keeps the target still
+   * while the host is picking, instead of moving it when someone's screen locks.
+   */
+  poolNeeded: number;
+  /** During `create`: which photo each player was dealt. Empty in every other phase. */
+  assignments: Assignment[];
+
   /** During `create`: who is already done. */
   submittedIds: string[];
   /** During `vote`: who has voted. */
@@ -95,11 +120,14 @@ export interface JoinPayload {
 }
 
 export interface SubmitMemePayload {
-  /** Raw compressed image bytes. Null means "keep the image I already sent". */
-  image: ArrayBuffer | null;
-  mimeType: string;
   topText: string;
   bottomText: string;
+}
+
+export interface AddImagePayload {
+  /** Raw compressed image bytes for one photo. */
+  image: ArrayBuffer;
+  mimeType: string;
 }
 
 export interface ClientToServerEvents {
@@ -107,7 +135,7 @@ export interface ClientToServerEvents {
   joinRoom: (p: JoinPayload & { code: string }, ack: Ack<{ code: string }>) => void;
   leaveRoom: () => void;
 
-  /** Host only. */
+  /** Host only: from `lobby` or `results` into `upload`, so the host can pick photos. */
   startRound: (ack: Ack) => void;
   /** Host only: stop waiting and move the phase along. */
   skipPhase: (ack: Ack) => void;
@@ -115,6 +143,13 @@ export interface ClientToServerEvents {
   backToLobby: (ack: Ack) => void;
   /** Host only, lobby only. */
   updateSettings: (p: Partial<RoomSettings>, ack: Ack) => void;
+
+  /** Host only, `upload` phase: add one photo to this round's pool. */
+  addImage: (p: AddImagePayload, ack: Ack<{ id: string }>) => void;
+  /** Host only, `upload` phase: drop a photo again. */
+  removeImage: (p: { id: string }, ack: Ack) => void;
+  /** Host only, `upload` phase: deal the pool out at random and start the caption clock. */
+  dealImages: (ack: Ack) => void;
 
   submitMeme: (p: SubmitMemePayload, ack: Ack) => void;
   castVote: (p: { submissionId: string }, ack: Ack) => void;

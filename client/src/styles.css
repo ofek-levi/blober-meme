@@ -836,6 +836,100 @@ input {
   color: var(--muted);
 }
 
+/* ----------------------------------------------------------- photo pool */
+
+/*
+ * The host's upload grid. Every slot the round needs is on screen from the first paint,
+ * filled or not, so the grid holds its size instead of jumping as photos land one by one.
+ */
+.x-photo-grid {
+  /* like .meme: never let .screen-body squash it, the body scrolls instead */
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--s2);
+}
+
+.x-photo,
+.x-photo-slot {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--r-md);
+}
+
+.x-photo {
+  background: #000;
+  border: 1px solid var(--line);
+}
+
+.x-photo-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* squares crop; the whole photo is shown in the MemeCard once it is dealt */
+  object-fit: cover;
+}
+
+.x-photo-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--muted-dim);
+  background: var(--bg-sunken);
+  border: 2px dashed var(--line-soft);
+  /* it is a second label for the photo input: a "+" that did nothing would be a trap */
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.x-photo-slot:active {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.x-photo-remove {
+  appearance: none;
+  -webkit-appearance: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.72);
+  /*
+   * A full 48px of thumb target, but the transparent border keeps the paint to a 32px dot
+   * so it is not sitting on half of the photo it removes.
+   */
+  border: 8px solid transparent;
+  background-clip: padding-box;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.x-photo-remove:active:not(:disabled) {
+  background: var(--accent);
+}
+
+.x-photo-remove:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* -------------------------------------------------------------- results */
 
 .winner {

@@ -7,14 +7,17 @@
  * reclaim its seat.
  */
 
+import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_CREATE_SECONDS,
   DEFAULT_VOTE_SECONDS,
   MAX_PLAYERS,
   ROOM_CODE_LENGTH,
   cleanName,
+  type Assignment,
   type Phase,
   type Player,
+  type PoolImage,
   type PublicSubmission,
   type RoomSettings,
   type RoomState,
@@ -29,10 +32,15 @@ export function fail(error: string): Result {
   return { ok: false, error };
 }
 
-export interface StoredSubmission {
-  /** Memory only, never disk. Served by GET /img/:code/:playerId. */
+/** One of the host's photos for this round. */
+export interface StoredImage {
+  /** Memory only, never disk. Served by GET /img/:code/:imageId. */
   image: Buffer;
   mime: string;
+}
+
+/** Captions only: the photo they were captioning lives in the room's pool. */
+export interface StoredSubmission {
   topText: string;
   bottomText: string;
 }
@@ -44,7 +52,9 @@ export interface RoomPlayer {
   score: number;
   /** Changes on every reconnect; only used to tell two sockets of one seat apart. */
   socketId: string | null;
-  /** This round's meme, or null. */
+  /** The pool photo they were dealt this round, or null until the deal. */
+  imageId: string | null;
+  /** This round's captions, or null. */
   submission: StoredSubmission | null;
   /** The playerId they voted for this round, or null. */
   votedFor: string | null;
@@ -57,6 +67,8 @@ export interface Room {
   round: number;
   /** Insertion ordered, keyed by playerId. */
   players: Map<string, RoomPlayer>;
+  /** This round's host photos, insertion ordered, keyed by a generated image id. */
+  pool: Map<string, StoredImage>;
   settings: RoomSettings;
   endsAt: number | null;
   /**
@@ -88,7 +100,26 @@ function newCode(): string {
 }
 
 function newPlayer(id: string, name: string, socketId: string): RoomPlayer {
-  return { id, name, connected: true, score: 0, socketId, submission: null, votedFor: null };
+  return {
+    id,
+    name,
+    connected: true,
+    score: 0,
+    socketId,
+    imageId: null,
+    submission: null,
+    votedFor: null,
+  };
+}
+
+/** Image ids end up in URLs other players can see, so they are opaque, not a counter. */
+export function newImageId(): string {
+  return randomUUID();
+}
+
+/** Round-versioned so a new round never shows a cached previous photo. */
+function imageUrl(room: Room, imageId: string): string {
+  return `/img/${room.code}/${imageId}?v=${room.round}`;
 }
 
 export function getRoom(code: string): Room | undefined {
@@ -113,6 +144,7 @@ export function createRoom(
     phase: 'lobby',
     round: 0,
     players: new Map(),
+    pool: new Map(),
     settings: { createSeconds: DEFAULT_CREATE_SECONDS, voteSeconds: DEFAULT_VOTE_SECONDS },
     endsAt: null,
     phaseStartedAt: Date.now(),
@@ -162,8 +194,7 @@ export function markAway(room: Room, playerId: string): void {
 
 /** Gone for good: `leaveRoom`, or a lobby no-show whose grace ran out. */
 export function removePlayer(room: Room, playerId: string): void {
-  const player = room.players.get(playerId);
-  if (player) player.submission = null; // let the image Buffer go
+  // Their photo stays in the pool: it is this round's, not theirs, and a re-deal may use it.
   room.players.delete(playerId);
   reassignHost(room);
 }
@@ -178,7 +209,7 @@ export function reassignHost(room: Room): void {
 }
 
 export function deleteRoom(room: Room): void {
-  for (const player of room.players.values()) player.submission = null;
+  room.pool.clear(); // nothing outlives the room: let this round's photo Buffers go
   room.players.clear();
   rooms.delete(room.code);
 }
@@ -201,14 +232,22 @@ export function voteCounts(room: Room): Map<string, number> {
  */
 export function roundSubmissions(
   room: Room,
-): Array<{ player: RoomPlayer; submission: StoredSubmission }> {
+): Array<{ player: RoomPlayer; submission: StoredSubmission; imageId: string }> {
   const entries = [...room.players.values()].flatMap((player) =>
-    player.submission
-      ? [{ player, submission: player.submission, key: shuffleKey(room.round, player.id) }]
+    // No assignment means no photo to show it on, so it is not a meme anyone can look at.
+    player.submission && player.imageId
+      ? [
+          {
+            player,
+            submission: player.submission,
+            imageId: player.imageId,
+            key: shuffleKey(room.round, player.id),
+          },
+        ]
       : [],
   );
   entries.sort((a, b) => a.key - b.key || a.player.id.localeCompare(b.player.id));
-  return entries.map(({ player, submission }) => ({ player, submission }));
+  return entries.map(({ player, submission, imageId }) => ({ player, submission, imageId }));
 }
 
 /** FNV-1a over "round:playerId" -- a stable shuffle that reshuffles every round. */
@@ -241,15 +280,32 @@ export function publicState(room: Room): RoomState {
   const reveal = room.phase === 'vote' || room.phase === 'results';
   const counts = room.phase === 'results' ? voteCounts(room) : null;
   const submissions: PublicSubmission[] = reveal
-    ? roundSubmissions(room).map(({ player, submission }) => ({
+    ? roundSubmissions(room).map(({ player, submission, imageId }) => ({
         id: player.id,
         playerName: player.name,
-        imageUrl: `/img/${room.code}/${player.id}?v=${room.round}`,
+        imageUrl: imageUrl(room, imageId),
         topText: submission.topText,
         bottomText: submission.bottomText,
         votes: counts?.get(player.id) ?? 0,
       }))
     : [];
+
+  // The pool only means anything while it is being filled -- the host sees their own
+  // thumbnails, everyone else just the count. Every other phase sends it empty.
+  const pool: PoolImage[] =
+    room.phase === 'upload'
+      ? [...room.pool.keys()].map((id) => ({ id, imageUrl: imageUrl(room, id) }))
+      : [];
+
+  // Everyone learns who was dealt what -- the captions are what stay secret until voting.
+  const assignments: Assignment[] =
+    room.phase === 'create'
+      ? [...room.players.values()].flatMap((p) =>
+          p.imageId
+            ? [{ playerId: p.id, imageId: p.imageId, imageUrl: imageUrl(room, p.imageId) }]
+            : [],
+        )
+      : [];
 
   const inRound = room.phase !== 'lobby';
   return {
@@ -261,6 +317,12 @@ export function publicState(room: Room): RoomState {
     settings: { ...room.settings },
     endsAt: room.phase === 'create' || room.phase === 'vote' ? room.endsAt : null,
     serverNow: Date.now(),
+    pool,
+    // Seats, not sockets. `upload` has no clock, so phones lock while the host rummages --
+    // counting sockets would move the host's target mid-pick and leave the woken-up player
+    // with no photo. A seat already survives the whole round, so it is the honest unit.
+    poolNeeded: room.players.size,
+    assignments,
     submittedIds: inRound ? idsWhere(room, (p) => p.submission !== null) : [],
     votedIds: inRound ? idsWhere(room, (p) => p.votedFor !== null) : [],
     submissions,

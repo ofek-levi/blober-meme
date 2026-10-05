@@ -4,6 +4,7 @@ import { Editor } from './screens/Editor';
 import { Home } from './screens/Home';
 import { Lobby } from './screens/Lobby';
 import { Results } from './screens/Results';
+import { Upload } from './screens/Upload';
 import { Vote } from './screens/Vote';
 
 export function App(): ReactElement {
@@ -19,6 +20,7 @@ export function App(): ReactElement {
 function CurrentScreen(): ReactElement {
   const { state } = useGame();
   if (state === null) return <Home />;
+  if (state.phase === 'upload') return <Upload />;
   if (state.phase === 'create') return <Editor />;
   if (state.phase === 'vote') return <Vote />;
   if (state.phase === 'results') return <Results />;

@@ -79,6 +79,63 @@ without it; the client build is optional.
 If you ever host the two halves on different domains, set `VITE_SERVER_URL` when building the
 client and it will point its socket there instead of at its own origin.
 
+## Deploying to Render + Vercel
+
+Server on Render, client on Vercel. **Deploy the server first** — you need its URL to build
+the client.
+
+### 1. Server → Render
+
+New **Web Service**, pointed at this repo:
+
+| Setting | Value |
+| --- | --- |
+| Root directory | `server` |
+| Runtime | Node |
+| Build command | `npm install` |
+| Start command | `npm start` |
+| Health check path | `/health` |
+
+No environment variables needed — Render injects `PORT` and the server reads it. Copy the
+resulting URL, e.g. `https://blober-meme.onrender.com`.
+
+### 2. Client → Vercel
+
+Import the same repo:
+
+| Setting | Value |
+| --- | --- |
+| Root directory | `client` |
+| Framework preset | Vite (auto-detected) |
+| Build command | `npm run build` (default) |
+| Output directory | `dist` (default) |
+
+Add one environment variable:
+
+```
+VITE_SERVER_URL = https://blober-meme.onrender.com
+```
+
+**It must be `https://`** (a Vercel page can't talk to a plain-http server) **and it is baked
+in at build time**, not read at runtime — so if you ever change it, redeploy the client.
+
+That's all the configuration. Socket.IO reflects the caller's origin (`cors: { origin: true }`),
+so the Vercel domain is accepted without listing it anywhere, and the client rewrites the
+server's relative image paths onto `VITE_SERVER_URL` so memes load across the two domains.
+
+### Render's free tier, and what it costs you
+
+A free Render service **spins down after about 15 minutes with no traffic**, and the whole game
+lives in memory. So:
+
+- The first person to open the game after a quiet spell waits ~50s for a cold start.
+- **A spin-down ends every game in progress.** Players get bounced to the home screen and have
+  to make a new room — scores are gone.
+
+For a game night that's usually fine: once someone's playing, traffic keeps it awake. If it
+annoys you, the paid instance type removes the spin-down. Don't bother with an external pinger
+to keep it alive — on the free tier that just burns your monthly hours.
+
 ## How a round works
 
 The server owns the game. Clients render what they're told and send intents — nothing

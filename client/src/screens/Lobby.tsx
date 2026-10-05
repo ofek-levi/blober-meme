@@ -171,10 +171,14 @@ export function Lobby() {
                   Starting…
                 </>
               ) : (
-                'Start the round'
+                'Pick the photos'
               )}
             </button>
-            {!canStart && (
+            {canStart ? (
+              <p className="hint">
+                You pick one photo per player, then they get dealt out at random.
+              </p>
+            ) : (
               <p className="hint">
                 Needs {MIN_PLAYERS_TO_START} players to start — send that code to someone.
               </p>
@@ -186,7 +190,7 @@ export function Lobby() {
             )}
           </>
         ) : (
-          <p className="progress-note">Waiting for {host ? host.name : 'the host'} to start…</p>
+          <p className="progress-note">Waiting for {host ? host.name : 'the host'} to pick the photos…</p>
         )}
         <button type="button" className="link-btn" onClick={leaveRoom}>
           Leave game

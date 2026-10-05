@@ -16,6 +16,7 @@ import {
   cleanCode,
   cleanName,
   ROOM_CODE_LENGTH,
+  type AddImagePayload,
   type ClientToServerEvents,
   type Player,
   type RoomSettings,
@@ -44,14 +45,20 @@ export interface Game {
   skipPhase(): Promise<ActionResult>;
   backToLobby(): Promise<ActionResult>;
   updateSettings(s: Partial<RoomSettings>): Promise<ActionResult>;
+  addImage(p: AddImagePayload): Promise<ActionResult & { id?: string }>;
+  removeImage(id: string): Promise<ActionResult>;
+  dealImages(): Promise<ActionResult>;
   submitMeme(p: SubmitMemePayload): Promise<ActionResult>;
   castVote(submissionId: string): Promise<ActionResult>;
 }
 
 type CodeResult = ActionResult & { code?: string };
+type ImageResult = ActionResult & { id?: string };
 type Failure = { ok: false; error: string };
 /** What createRoom/joinRoom actually get back, as a plain union so `res.ok` narrows. */
 type JoinAck = { ok: true; code: string } | Failure;
+/** Same trick for addImage, which answers with the id the pool filed the photo under. */
+type AddImageAck = { ok: true; id: string } | Failure;
 
 const KEY_PLAYER_ID = 'blober:playerId';
 const KEY_NAME = 'blober:name';
@@ -118,6 +125,26 @@ const socket: Socket<ServerToClientEvents, ClientToServerEvents> = serverUrl
   ? io(serverUrl)
   : io();
 
+/**
+ * The server sends image paths relative to itself (`/img/<code>/<imageId>?v=<round>`). When
+ * the client is hosted apart from the server -- Vercel in front of Render, say -- that path
+ * would resolve against the client's own domain and every meme would 404, so point it back
+ * at the server. Same-origin setups leave it exactly as it arrived.
+ *
+ * Every list carrying a path has to go through here: the host's own pool thumbnails and the
+ * photo each player was dealt are served by the same route as the finished memes.
+ */
+function withAbsoluteImages(s: RoomState): RoomState {
+  if (!serverUrl) return s;
+  const absolute = (url: string) => new URL(url, serverUrl).toString();
+  return {
+    ...s,
+    pool: s.pool.map((img) => ({ ...img, imageUrl: absolute(img.imageUrl) })),
+    assignments: s.assignments.map((a) => ({ ...a, imageUrl: absolute(a.imageUrl) })),
+    submissions: s.submissions.map((sub) => ({ ...sub, imageUrl: absolute(sub.imageUrl) })),
+  };
+}
+
 /** Every action is an emit with an ack, and no ack may hang the UI forever. */
 function withAck<R>(send: (ack: (res: R) => void) => void): Promise<R | Failure> {
   /*
@@ -165,7 +192,7 @@ export function GameProvider({ children }: { children: ReactNode }): ReactElemen
   useEffect(() => {
     const onState = (s: RoomState) => {
       clockOffset.current = s.serverNow - Date.now();
-      setState(s);
+      setState(withAbsoluteImages(s));
       setNotice(null);
       writeStored(KEY_CODE, s.code);
     };
@@ -293,6 +320,10 @@ export function GameProvider({ children }: { children: ReactNode }): ReactElemen
     skipPhase: () => withAck<ActionResult>((ack) => socket.emit('skipPhase', ack)),
     backToLobby: () => withAck<ActionResult>((ack) => socket.emit('backToLobby', ack)),
     updateSettings: (s) => withAck<ActionResult>((ack) => socket.emit('updateSettings', s, ack)),
+    addImage: (p): Promise<ImageResult> =>
+      withAck<AddImageAck>((ack) => socket.emit('addImage', p, ack)),
+    removeImage: (id) => withAck<ActionResult>((ack) => socket.emit('removeImage', { id }, ack)),
+    dealImages: () => withAck<ActionResult>((ack) => socket.emit('dealImages', ack)),
     submitMeme: (p) => withAck<ActionResult>((ack) => socket.emit('submitMeme', p, ack)),
     castVote: (submissionId) =>
       withAck<ActionResult>((ack) => socket.emit('castVote', { submissionId }, ack)),

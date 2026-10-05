@@ -12,20 +12,24 @@ import { Server, type Socket } from 'socket.io';
 import {
   cleanCode,
   type Ack,
+  type AddImagePayload,
   type ClientToServerEvents,
   type JoinPayload,
   type RoomSettings,
   type ServerToClientEvents,
   type SubmitMemePayload,
 } from './types.js';
-import { createRoom, getRoom, joinRoom, type Result, type Room } from './rooms.js';
+import { createRoom, getRoom, joinRoom, type Room } from './rooms.js';
 import {
+  addImage,
   attach,
   backToLobby,
   castVote,
+  dealImages,
   playerArrived,
   playerDisconnected,
   playerLeft,
+  removeImage,
   skipPhase,
   startRound,
   submitMeme,
@@ -46,23 +50,24 @@ app.get('/health', (_req, res) => {
 });
 
 /**
- * This round's images, straight out of the room objects -- the server never touches the
+ * This round's pool, straight out of the room objects -- the server never touches the
  * filesystem for them. The URL carries ?v=<round>, so a long cache is safe.
  */
-app.get('/img/:code/:playerId', (req, res) => {
+app.get('/img/:code/:imageId', (req, res) => {
   const room = getRoom(cleanCode(req.params.code));
-  // Only servable while the round is showing them: `publicState` hides submissions until
-  // voting, and these URLs are derivable from it, so a second browser could peek otherwise.
-  const open = room !== undefined && (room.phase === 'vote' || room.phase === 'results');
-  const submission = open ? room.players.get(req.params.playerId)?.submission : undefined;
-  if (!submission) {
+  // Servable for the whole round: the host previews their own picks during `upload` and
+  // everyone needs the photo they were dealt. Only the captions are secret, and `publicState`
+  // is what keeps those back -- the photos themselves give nothing away.
+  const open = room !== undefined && room.phase !== 'lobby';
+  const stored = open ? room.pool.get(req.params.imageId) : undefined;
+  if (!stored) {
     // no-store so a browser can't hang on to a 404 from before the image existed
     res.status(404).set('Cache-Control', 'no-store').type('text/plain').send('no image');
     return;
   }
-  res.set('Content-Type', submission.mime);
+  res.set('Content-Type', stored.mime);
   res.set('Cache-Control', 'public, max-age=3600');
-  res.send(submission.image);
+  res.send(stored.image);
 });
 
 if (hasClientBuild) {
@@ -83,7 +88,7 @@ if (hasClientBuild) {
 
 const httpServer = createServer(app);
 const io: GameServer = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-  // submitMeme carries the compressed image as a binary frame.
+  // addImage carries one compressed photo as a binary frame.
   maxHttpBufferSize: 2_000_000,
   // Reflect the caller's origin so the Vite dev server and a separately hosted client work.
   cors: { origin: true },
@@ -123,13 +128,16 @@ function sit(socket: GameSocket, room: Room, playerId: string): void {
   socket.join(room.code);
 }
 
-/** Every in-room action has the same shape: find the caller's seat, apply a rule, ack it. */
-function action(
+/**
+ * Every in-room action has the same shape: find the caller's seat, apply a rule, ack it.
+ * `T` is whatever extra the ack carries back, so a plain ok/error result is the default.
+ */
+function action<T = unknown>(
   socket: GameSocket,
   ack: unknown,
-  run: (room: Room, playerId: string) => Result,
+  run: (room: Room, playerId: string) => ({ ok: true } & T) | { ok: false; error: string },
 ): void {
-  const done = reply(ack);
+  const done = reply<T>(ack);
   const seat = seats.get(socket.id);
   const room = seat ? getRoom(seat.code) : undefined;
   if (!seat || !room) {
@@ -200,12 +208,24 @@ io.on('connection', (socket) => {
     action(socket, ack, (room, playerId) => updateSettings(room, playerId, patch));
   });
 
+  socket.on('addImage', (payload, ack) => {
+    const p: Partial<AddImagePayload> = payload ?? {};
+    action<{ id: string }>(socket, ack, (room, playerId) =>
+      addImage(room, playerId, { image: p.image, mimeType: asString(p.mimeType) }),
+    );
+  });
+
+  socket.on('removeImage', (payload, ack) => {
+    const p: Partial<{ id: string }> = payload ?? {};
+    action(socket, ack, (room, playerId) => removeImage(room, playerId, asString(p.id)));
+  });
+
+  socket.on('dealImages', (ack) => action(socket, ack, dealImages));
+
   socket.on('submitMeme', (payload, ack) => {
     const p: Partial<SubmitMemePayload> = payload ?? {};
     action(socket, ack, (room, playerId) =>
       submitMeme(room, playerId, {
-        image: p.image,
-        mimeType: asString(p.mimeType),
         topText: asString(p.topText),
         bottomText: asString(p.bottomText),
       }),

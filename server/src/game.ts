@@ -14,10 +14,10 @@ import {
   MIN_PLAYERS_TO_START,
   VOTE_SECONDS_OPTIONS,
   cleanText,
+  type AddImagePayload,
   type ClientToServerEvents,
   type RoomSettings,
   type ServerToClientEvents,
-  type SubmitMemePayload,
 } from './types.js';
 import {
   OK,
@@ -25,6 +25,7 @@ import {
   deleteRoom,
   fail,
   markAway,
+  newImageId,
   publicState,
   removePlayer,
   rooms,
@@ -179,10 +180,15 @@ function eligibleVoters(room: Room): RoomPlayer[] {
 function endCreateIfEveryoneSubmitted(room: Room): boolean {
   if (room.phase !== 'create') return false;
   const here = connectedPlayers(room);
-  // Too few people left to play the round out: let the clock or the host end it, instead of
-  // cutting straight to an unvotable results screen the moment somebody's phone drops.
-  if (here.length < MIN_PLAYERS_TO_START) return false;
-  if (here.some((p) => !p.submission)) return false;
+  // Someone who joined after the deal holds no photo and so can never submit: waiting on
+  // them would hang the phase until the clock runs out.
+  const dealt = here.filter((p) => p.imageId !== null);
+  // Too few people left who can actually play the round out: let the clock or the host end it,
+  // instead of cutting straight to an unvotable results screen the moment somebody's phone
+  // drops. Counted over the dealt players, not everyone here, so a late joiner cannot make up
+  // the numbers and cut the phase short for someone who is still reconnecting.
+  if (dealt.length < MIN_PLAYERS_TO_START) return false;
+  if (dealt.some((p) => !p.submission)) return false;
   endCreate(room);
   return true;
 }
@@ -216,19 +222,108 @@ export function startRound(room: Room, playerId: string): Result {
 
   clearPhaseTimer(room);
   room.round += 1;
+  room.pool.clear(); // drops last round's photo Buffers
   for (const player of room.players.values()) {
-    player.submission = null; // drops last round's image Buffer
+    player.imageId = null;
+    player.submission = null;
     player.votedFor = null;
   }
+  room.phase = 'upload';
+  // No clock while the host rummages through their camera roll, so the phase bookkeeping
+  // `armPhaseTimer` usually does has to happen by hand.
+  room.phaseStartedAt = Date.now();
+  room.endsAt = null;
+  broadcast(room);
+  return OK;
+}
+
+export interface ImageInput {
+  image: AddImagePayload['image'] | undefined;
+  mimeType: string;
+}
+
+/**
+ * Widened like `rooms.createRoom`: this is the one action that acks a value back, so it
+ * cannot use `fail()`.
+ */
+export function addImage(
+  room: Room,
+  playerId: string,
+  input: ImageInput,
+): { ok: true; id: string } | { ok: false; error: string } {
+  if (room.hostId !== playerId) return { ok: false, error: 'Only the host can pick the photos.' };
+  if (room.phase !== 'upload') return { ok: false, error: 'Photos are not being picked right now.' };
+  // Seats, like `poolNeeded`: an away phone still holds a seat and still gets dealt a photo.
+  if (room.pool.size >= room.players.size) {
+    return { ok: false, error: 'That is one photo per player already.' };
+  }
+
+  const image = toBuffer(input.image);
+  if (!image) return { ok: false, error: 'That image did not arrive in a format I can read.' };
+  if (!ALLOWED_MIMES.includes(input.mimeType)) {
+    return { ok: false, error: 'That kind of image is not supported.' };
+  }
+  if (image.byteLength === 0) return { ok: false, error: 'That image came through empty.' };
+  if (image.byteLength > MAX_IMAGE_BYTES) return { ok: false, error: 'That image is too big.' };
+
+  const id = newImageId();
+  room.pool.set(id, { image, mime: input.mimeType });
+  broadcast(room);
+  return { ok: true, id };
+}
+
+export function removeImage(room: Room, playerId: string, imageId: string): Result {
+  if (room.hostId !== playerId) return fail('Only the host can drop a photo.');
+  if (room.phase !== 'upload') return fail('Photos are not being picked right now.');
+  if (!room.pool.delete(imageId)) return fail('That photo is not in this round.');
+  broadcast(room);
+  return OK;
+}
+
+export function dealImages(room: Room, playerId: string): Result {
+  if (room.hostId !== playerId) return fail('Only the host can deal the photos.');
+  if (room.phase !== 'upload') return fail('Photos are not being picked right now.');
+
+  // Everyone with a seat gets one, connected right now or not: `upload` has no clock, so a
+  // locked phone is the normal case and the photo should be waiting when it wakes up.
+  const seats = [...room.players.values()];
+  // `startRound` checked this a phase ago, but `upload` is untimed -- the room can drain to one
+  // person in between, and a solo round is a dead end nobody asked for.
+  if (seats.length < MIN_PLAYERS_TO_START) {
+    return fail(`You need ${MIN_PLAYERS_TO_START} players in the room to deal.`);
+  }
+  if (room.pool.size !== seats.length) {
+    return fail(`Pick one photo per player — ${seats.length} needed, ${room.pool.size} so far.`);
+  }
+
+  const ids = shuffled([...room.pool.keys()]);
+  // Deal into a clean round, so nobody keeps a photo or a caption from an earlier attempt.
+  for (const player of seats) {
+    player.imageId = null;
+    player.submission = null;
+    player.votedFor = null;
+  }
+  seats.forEach((player, i) => {
+    player.imageId = ids[i];
+  });
+
   room.phase = 'create';
   armPhaseTimer(room, room.settings.createSeconds);
   broadcast(room);
   return OK;
 }
 
+/** Fisher-Yates, so the deal is a true permutation: never one photo to two people. */
+function shuffled(ids: readonly string[]): string[] {
+  const out = [...ids];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 export interface MemeInput {
-  image: SubmitMemePayload['image'] | undefined;
-  mimeType: string;
   topText: string;
   bottomText: string;
 }
@@ -237,35 +332,24 @@ export function submitMeme(room: Room, playerId: string, input: MemeInput): Resu
   if (room.phase !== 'create') return fail('Memes are closed right now.');
   const player = room.players.get(playerId);
   if (!player) return fail('You are not in this room.');
+  // A late joiner has nothing to caption: they are in for the vote and the next round.
+  if (!player.imageId) return fail('You were not dealt a photo this round.');
 
-  const image = toBuffer(input.image);
-  if (image === 'unusable') return fail('That image did not arrive in a format I can read.');
-
-  const topText = cleanText(input.topText);
-  const bottomText = cleanText(input.bottomText);
-
-  if (image) {
-    if (!ALLOWED_MIMES.includes(input.mimeType)) return fail('That kind of image is not supported.');
-    if (image.byteLength === 0) return fail('That image came through empty.');
-    if (image.byteLength > MAX_IMAGE_BYTES) return fail('That image is too big.');
-    player.submission = { image, mime: input.mimeType, topText, bottomText };
-  } else {
-    // A null image means "keep the photo I already sent" -- a text-only edit.
-    const existing = player.submission;
-    if (!existing) return fail('Pick a photo first.');
-    player.submission = { ...existing, topText, bottomText };
-  }
+  player.submission = {
+    topText: cleanText(input.topText),
+    bottomText: cleanText(input.bottomText),
+  };
 
   if (!endCreateIfEveryoneSubmitted(room)) broadcast(room);
   return OK;
 }
 
 /** Socket.IO hands binary over as a Buffer, but a client could send an ArrayBuffer. */
-function toBuffer(image: MemeInput['image']): Buffer | null | 'unusable' {
+function toBuffer(image: ImageInput['image']): Buffer | null {
   if (!image) return null;
   if (Buffer.isBuffer(image)) return image;
   if (image instanceof ArrayBuffer) return Buffer.from(new Uint8Array(image));
-  return 'unusable';
+  return null;
 }
 
 export function castVote(room: Room, playerId: string, submissionId: string): Result {
@@ -300,13 +384,19 @@ export function skipPhase(room: Room, playerId: string): Result {
 
 export function backToLobby(room: Room, playerId: string): Result {
   if (room.hostId !== playerId) return fail('Only the host can go back to the lobby.');
-  if (room.phase !== 'results') return fail('You can only do that from the results.');
+  // Also the only way out of `upload`: that phase has no clock, no skip and no timer settings,
+  // so without this an accidental "Pick the photos" tap strands the whole room there.
+  if (room.phase !== 'results' && room.phase !== 'upload') {
+    return fail('You can only do that from the results or while picking photos.');
+  }
   clearPhaseTimer(room);
   room.phase = 'lobby';
   room.phaseStartedAt = Date.now();
   room.endsAt = null;
+  room.pool.clear(); // the round is over: let its photo Buffers go now, not next round
   for (const player of room.players.values()) {
-    player.submission = null; // the round is over: let its image Buffers go now, not next round
+    player.imageId = null;
+    player.submission = null;
     // A seat that went away mid-round never got the lobby grace, so give it that grace here.
     // Otherwise it sits in the lobby forever and keeps the next round from ever starting.
     if (!player.connected) armDropTimer(room, player.id);
