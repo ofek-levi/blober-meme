@@ -176,10 +176,17 @@ Everything tunable lives at the top of the two `types.ts` files — round length
 name and caption lengths, image size caps and the allowed image types. Change both copies.
 
 ```ts
-MAX_PLAYERS = 12          MAX_NAME_LENGTH = 16       MAX_TEXT_LENGTH = 80
+MAX_PLAYERS = 50          MAX_NAME_LENGTH = 16       MAX_TEXT_LENGTH = 80
+MAX_POOL_IMAGES = 30      MIN_PLAYERS_TO_START = 2
 MAX_IMAGE_DIMENSION = 1000       TARGET_IMAGE_BYTES = 400_000
 DEFAULT_CREATE_SECONDS = 120     DEFAULT_VOTE_SECONDS = 60
 ```
+
+A 50-player room is tested and works, but two things scale with it. The pile caps at 30
+photos, so above 30 players some photos are always shared — which is fine, that is what the
+dealing rule is for. And the server rebroadcasts the whole game state on every change, which
+at 50 players is ~11 kB per player per change, so a full voting round moves a few tens of MB
+across all the phones. Fine on wifi; worth knowing on patchy mobile data.
 
 Images are JPG, PNG or WebP. iPhone HEIC photos get converted by the browser's file picker in
 most cases; if one doesn't, the editor says so instead of failing silently.

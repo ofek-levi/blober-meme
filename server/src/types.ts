@@ -9,7 +9,7 @@
 
 export const MAX_NAME_LENGTH = 16;
 export const MAX_TEXT_LENGTH = 80;
-export const MAX_PLAYERS = 12;
+export const MAX_PLAYERS = 50;
 export const MIN_PLAYERS_TO_START = 2;
 export const ROOM_CODE_LENGTH = 4;
 
@@ -17,7 +17,7 @@ export const ROOM_CODE_LENGTH = 4;
  * Most photos the host may put in one round's pile. The pile is free to be smaller than the
  * room -- fewer photos than players just means some photos get dealt to more than one person.
  */
-export const MAX_POOL_IMAGES = 20;
+export const MAX_POOL_IMAGES = 30;
 
 /** Hard cap the server enforces on an uploaded image, after client compression. */
 export const MAX_IMAGE_BYTES = 1_500_000;
