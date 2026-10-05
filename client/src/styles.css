@@ -1,0 +1,973 @@
+/* ==========================================================================
+   blober-meme -- the entire visual identity. One stylesheet, mobile first.
+   Every class the screens use is defined here and nowhere else.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* palette: deep violet night, hot pink accent, party-game saturation */
+  --bg: #120f1c;
+  --bg-raised: #1d1832;
+  --bg-sunken: #0b0914;
+  --line: #312a4d;
+  --line-soft: #241f3b;
+
+  --text: #f4f1ff;
+  --muted: #a99fcb;
+  --muted-dim: #6f668f;
+
+  --accent: #ff3d8b;
+  --accent-deep: #d61f68;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(255, 61, 139, 0.18);
+
+  --ok: #37e08b;
+  --gold: #ffd23f;
+  --danger: #ff5c5c;
+  --danger-soft: rgba(255, 92, 92, 0.14);
+
+  /* radii */
+  --r-sm: 9px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-pill: 999px;
+
+  /* spacing */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+
+  --gutter: 16px;
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* The classic meme face. Impact ships on every phone worth playing this on. */
+  --font-meme: Impact, "Anton", Haettenschweiler, "Arial Narrow Bold",
+    "Franklin Gothic Heavy", var(--font);
+
+  --shadow-pop: 0 10px 30px -14px rgba(0, 0, 0, 0.9);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text);
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1000px 600px at 15% -10%, rgba(255, 61, 139, 0.18), transparent 60%),
+    radial-gradient(900px 600px at 95% 110%, rgba(86, 61, 255, 0.22), transparent 60%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  /* no rubber-band bounce revealing blank space behind a fixed-height layout */
+  overscroll-behavior-y: none;
+}
+
+#root {
+  height: 100vh; /* fallback first, for anything without dvh */
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+img {
+  max-width: 100%;
+}
+
+button,
+label,
+.label,
+.title,
+.subtitle,
+.badge,
+.pill,
+.vote-label,
+.progress-note {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------- layout */
+
+.app {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* App renders the "reconnecting" strip as a bare child of .app. */
+.app > .notice {
+  flex: none;
+  margin: calc(env(safe-area-inset-top, 0px) + 8px) var(--gutter) 0;
+}
+
+/* It already cleared the notch, so the screen below it should not do that twice. */
+.app > .notice + .screen > .screen-head {
+  padding-top: var(--s3);
+}
+
+.screen {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) var(--gutter) var(--s2);
+}
+
+/* The only scroller in the app. */
+.screen-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s2) var(--gutter) var(--s4);
+}
+
+/*
+ * Stays in normal flow on purpose. position: fixed is exactly what lets the iOS
+ * keyboard cover the primary button; in a flex column the keyboard shrinks the
+ * viewport instead and the footer rides up with it.
+ */
+.screen-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3) var(--gutter) calc(env(safe-area-inset-bottom, 0px) + var(--s3));
+  border-top: 1px solid var(--line-soft);
+  background: rgba(11, 9, 20, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /*
+   * .center is often also the scroller (.screen-body center). Plain centring clips
+   * the overflowing top, which would hide the name input once the keyboard is up.
+   */
+  justify-content: safe center;
+  gap: var(--s3);
+  text-align: center;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.spread {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+.grow {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ----------------------------------------------------------------- type */
+
+.title {
+  margin: 0;
+  font-size: clamp(30px, 9vw, 42px);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* --muted, not --muted-dim: hints carry real instructions, and 13px at 3.6:1 is unreadable
+   on a phone outdoors. --muted-dim is for placeholders and the offline dot. */
+.hint {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.danger-text {
+  color: var(--danger);
+}
+
+/* ------------------------------------------------------------- controls */
+
+.btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: 52px;
+  padding: 0 20px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.06s ease,
+    background-color 0.14s ease,
+    opacity 0.14s ease;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  opacity: 0.42;
+  cursor: default;
+  box-shadow: none;
+}
+
+.btn-primary {
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent), var(--accent-deep));
+  border-color: transparent;
+  box-shadow: 0 10px 24px -12px var(--accent);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.btn-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: rgba(255, 92, 92, 0.42);
+}
+
+.btn-block {
+  display: flex;
+  width: 100%;
+}
+
+.btn-sm {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 14px;
+  border-radius: var(--r-sm);
+}
+
+.input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-height: 52px;
+  padding: 13px var(--s4);
+  font: inherit;
+  /* never below 16px: anything smaller makes iOS Safari zoom the page on focus */
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  /* keeps a focused input clear of .screen-foot when the browser scrolls to it */
+  scroll-margin-block-end: 140px;
+  transition:
+    border-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.input::placeholder {
+  color: var(--muted-dim);
+  font-weight: 500;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.input-code {
+  min-height: 68px;
+  padding: 10px 8px;
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  /* letter-spacing trails after the last glyph, so nudge the text back to centre */
+  text-indent: 0.3em;
+}
+
+.seg {
+  display: flex;
+  gap: var(--s1);
+  padding: var(--s1);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+}
+
+.seg-btn {
+  flex: 1 1 0;
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 48px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+
+.seg-btn:active:not(:disabled) {
+  background: var(--line-soft);
+}
+
+.seg-btn.on {
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent), var(--accent-deep));
+}
+
+.seg-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.link-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  align-self: center;
+  min-height: 48px;
+  padding: 0 var(--s3);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.link-btn:active {
+  color: var(--text);
+}
+
+.file-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  width: 100%;
+  min-height: 200px;
+  padding: var(--s5);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+  background: var(--bg-raised);
+  border: 2px dashed var(--line);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-color 0.14s ease,
+    transform 0.06s ease;
+}
+
+.file-drop:active {
+  transform: scale(0.99);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------- game chrome */
+
+.code-badge {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s1);
+  width: 100%;
+  min-height: 92px;
+  padding: var(--s3) var(--s4);
+  font: inherit;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 61, 139, 0.16), rgba(86, 61, 255, 0.12)),
+    var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-pop);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.code-badge:active {
+  transform: scale(0.99);
+}
+
+.code-chars {
+  font-family: var(--font-mono);
+  font-size: clamp(38px, 13vw, 52px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: 0.16em;
+  text-indent: 0.16em;
+  /* the one thing in the app you are meant to be able to select */
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+.timer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s1);
+}
+
+.timer .label {
+  text-align: center;
+}
+
+.timer-time {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: 0.01em;
+}
+
+.timer-bar {
+  height: 8px;
+  overflow: hidden;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+}
+
+.timer-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+  border-radius: var(--r-pill);
+  transition: width 0.25s linear;
+}
+
+.timer--urgent .timer-time {
+  color: var(--danger);
+}
+
+.timer--urgent .timer-bar-fill {
+  background: var(--danger);
+  transition: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .timer--urgent .timer-time {
+    animation: blober-pulse 1s ease-in-out infinite;
+  }
+}
+
+@keyframes blober-pulse {
+  50% {
+    opacity: 0.4;
+    transform: scale(1.07);
+  }
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 5px 11px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--r-pill);
+  font-variant-numeric: tabular-nums;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-note {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------- players */
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 54px;
+  padding: var(--s2) var(--s4);
+  background: var(--bg-raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+}
+
+.player-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: var(--ok);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--ok);
+}
+
+.player-dot.off {
+  background: var(--muted-dim);
+  box-shadow: none;
+}
+
+.player-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 700;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.player-score {
+  flex: none;
+  font-weight: 800;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.crown {
+  flex: none;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* ----------------------------------------------------------------- meme */
+
+.meme {
+  /* the whole point: .meme-text sizes in cqw, so one component fits any width */
+  container-type: inline-size;
+  /*
+   * As a flex item of .screen-body this would otherwise shrink, and overflow: hidden takes
+   * away the automatic minimum size that would normally stop it -- the card gets crushed to
+   * a sliver instead of overflowing and letting the body scroll.
+   */
+  flex: none;
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  line-height: 1;
+}
+
+/*
+ * No forced aspect ratio: the photo decides the height. max-height stops a tall
+ * portrait shot from pushing the controls off a phone screen.
+ */
+.meme-img {
+  display: block;
+  width: 100%;
+  max-height: 54vh;
+  max-height: 54dvh;
+  object-fit: contain;
+  background: #000;
+}
+
+.meme-empty {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.04) 0 10px,
+      transparent 10px 20px
+    ),
+    var(--bg-sunken);
+}
+
+.meme-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Anchored to opposite edges with no cap, two long captions meet in the middle of a wide
+     photo and draw through each other. Half the card each, minus a gap, so they never touch. */
+  max-height: 45%;
+  overflow: hidden;
+  margin: 0;
+  padding: 3cqw 4cqw;
+  font-family: var(--font-meme);
+  font-size: 9cqw;
+  font-weight: 900;
+  line-height: 1.04;
+  letter-spacing: 0.01em;
+  text-align: center;
+  /* uppercased here, not in JS, so the author's casing survives in the input */
+  text-transform: uppercase;
+  color: #fff;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  pointer-events: none;
+  /* layered shadows, not -webkit-text-stroke alone, so the outline is solid everywhere */
+  text-shadow:
+    0 0.11em 0 #000,
+    0 -0.11em 0 #000,
+    0.11em 0 0 #000,
+    -0.11em 0 0 #000,
+    0.08em 0.08em 0 #000,
+    -0.08em 0.08em 0 #000,
+    0.08em -0.08em 0 #000,
+    -0.08em -0.08em 0 #000,
+    0 0 0.3em rgba(0, 0, 0, 0.7);
+  -webkit-text-stroke: 0.012em #000;
+  paint-order: stroke fill;
+}
+
+.meme-text.top {
+  top: 0;
+}
+
+.meme-text.bottom {
+  bottom: 0;
+}
+
+.meme-overlay {
+  position: absolute;
+  top: var(--s2);
+  right: var(--s2);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------------------------------------------------------------- grids */
+
+.meme-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s3);
+}
+
+.meme-tile {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: var(--s2);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: var(--bg-raised);
+  border: 2px solid transparent;
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.08s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.meme-tile:active:not(.disabled) {
+  transform: scale(0.985);
+}
+
+.meme-tile.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.meme-tile.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.vote-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* -------------------------------------------------------------- results */
+
+.winner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  background: linear-gradient(180deg, rgba(255, 210, 63, 0.14), rgba(255, 210, 63, 0.03));
+  border: 1px solid rgba(255, 210, 63, 0.42);
+  border-radius: var(--r-lg);
+  box-shadow: 0 14px 40px -22px var(--gold);
+}
+
+.rank-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 54px;
+  padding: var(--s2) var(--s4);
+  background: var(--bg-raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+}
+
+.rank-votes {
+  flex: none;
+  margin-left: auto;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.score-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ------------------------------------------------------------- feedback */
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 11px var(--s4);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gold);
+  background: rgba(255, 210, 63, 0.12);
+  border: 1px solid rgba(255, 210, 63, 0.36);
+  border-radius: var(--r-md);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 11px var(--s4);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid rgba(255, 92, 92, 0.4);
+  border-radius: var(--r-md);
+}
+
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .spinner {
+    animation: blober-spin 0.7s linear infinite;
+  }
+}
+
+@keyframes blober-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s6) var(--s4);
+  color: var(--muted);
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-lg);
+}
+
+/* --------------------------------------------------- bigger screens */
+
+@media (min-width: 700px) {
+  .meme-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* tiles are half as wide, so a tall photo needs a tighter cap */
+  .meme-grid .meme-img {
+    max-height: 38vh;
+    max-height: 38dvh;
+  }
+}
+
+/* Deliberate phone-shaped column rather than a stretched layout. */
+@media (min-width: 600px) {
+  body {
+    background-color: #0a0813;
+  }
+
+  .app {
+    background-color: var(--bg);
+    box-shadow:
+      0 0 0 1px var(--line-soft),
+      0 40px 90px -40px #000;
+  }
+
+  .screen-foot {
+    background: var(--bg-sunken);
+  }
+}
