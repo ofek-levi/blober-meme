@@ -13,6 +13,12 @@ export const MAX_PLAYERS = 12;
 export const MIN_PLAYERS_TO_START = 2;
 export const ROOM_CODE_LENGTH = 4;
 
+/**
+ * Most photos the host may put in one round's pile. The pile is free to be smaller than the
+ * room -- fewer photos than players just means some photos get dealt to more than one person.
+ */
+export const MAX_POOL_IMAGES = 20;
+
 /** Hard cap the server enforces on an uploaded image, after client compression. */
 export const MAX_IMAGE_BYTES = 1_500_000;
 /** What the client aims for when compressing. */
@@ -52,7 +58,13 @@ export interface PoolImage {
   imageUrl: string;
 }
 
-/** Which of the host's photos a player has to caption this round. */
+/**
+ * Which of the host's photos a player has to caption this round.
+ *
+ * Two players CAN share an `imageId`: when the pile holds fewer photos than there are
+ * players, every photo is dealt once before any photo is dealt twice, so duplicates only
+ * start after the whole pile is in play.
+ */
 export interface Assignment {
   playerId: string;
   imageId: string;
@@ -88,14 +100,11 @@ export interface RoomState {
   /** Server clock at send time, so clients can correct for device clock skew. */
   serverNow: number;
 
-  /** During `upload`: the host's photos so far, and how many this round still needs. */
-  pool: PoolImage[];
   /**
-   * How many photos this round needs -- one per seat in the room, including a seat whose
-   * phone is briefly away. Counting seats rather than live sockets keeps the target still
-   * while the host is picking, instead of moving it when someone's screen locks.
+   * During `upload`: the photos the host has picked so far. Any size from 1 to
+   * `MAX_POOL_IMAGES` -- it does not have to match the number of players. Empty elsewhere.
    */
-  poolNeeded: number;
+  pool: PoolImage[];
   /** During `create`: which photo each player was dealt. Empty in every other phase. */
   assignments: Assignment[];
 

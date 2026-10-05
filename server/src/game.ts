@@ -11,6 +11,7 @@ import {
   ALLOWED_IMAGE_TYPES,
   CREATE_SECONDS_OPTIONS,
   MAX_IMAGE_BYTES,
+  MAX_POOL_IMAGES,
   MIN_PLAYERS_TO_START,
   VOTE_SECONDS_OPTIONS,
   cleanText,
@@ -253,9 +254,10 @@ export function addImage(
 ): { ok: true; id: string } | { ok: false; error: string } {
   if (room.hostId !== playerId) return { ok: false, error: 'Only the host can pick the photos.' };
   if (room.phase !== 'upload') return { ok: false, error: 'Photos are not being picked right now.' };
-  // Seats, like `poolNeeded`: an away phone still holds a seat and still gets dealt a photo.
-  if (room.pool.size >= room.players.size) {
-    return { ok: false, error: 'That is one photo per player already.' };
+  // A flat cap, not one per player: the pile is allowed to be smaller or larger than the
+  // room, so all that is left to limit is how many photo Buffers one room holds in memory.
+  if (room.pool.size >= MAX_POOL_IMAGES) {
+    return { ok: false, error: `The pile is full at ${MAX_POOL_IMAGES} photos.` };
   }
 
   const image = toBuffer(input.image);
@@ -283,6 +285,7 @@ export function removeImage(room: Room, playerId: string, imageId: string): Resu
 export function dealImages(room: Room, playerId: string): Result {
   if (room.hostId !== playerId) return fail('Only the host can deal the photos.');
   if (room.phase !== 'upload') return fail('Photos are not being picked right now.');
+  if (room.pool.size === 0) return fail('You need at least one photo to deal.');
 
   // Everyone with a seat gets one, connected right now or not: `upload` has no clock, so a
   // locked phone is the normal case and the photo should be waiting when it wakes up.
@@ -292,19 +295,20 @@ export function dealImages(room: Room, playerId: string): Result {
   if (seats.length < MIN_PLAYERS_TO_START) {
     return fail(`You need ${MIN_PLAYERS_TO_START} players in the room to deal.`);
   }
-  if (room.pool.size !== seats.length) {
-    return fail(`Pick one photo per player — ${seats.length} needed, ${room.pool.size} so far.`);
-  }
 
-  const ids = shuffled([...room.pool.keys()]);
   // Deal into a clean round, so nobody keeps a photo or a caption from an earlier attempt.
   for (const player of seats) {
     player.imageId = null;
     player.submission = null;
     player.votedFor = null;
   }
-  seats.forEach((player, i) => {
-    player.imageId = ids[i];
+  // The seats are shuffled too, not just the pile: `dealOrder` hands out whole passes of the
+  // pile, so dealing in seat order would guarantee the first few seats different photos from
+  // each other and leave the repeats always landing on the same seats.
+  const order = shuffled(seats);
+  const deal = dealOrder([...room.pool.keys()], order.length);
+  order.forEach((player, i) => {
+    player.imageId = deal[i];
   });
 
   room.phase = 'create';
@@ -313,9 +317,28 @@ export function dealImages(room: Room, playerId: string): Result {
   return OK;
 }
 
-/** Fisher-Yates, so the deal is a true permutation: never one photo to two people. */
-function shuffled(ids: readonly string[]): string[] {
-  const out = [...ids];
+/**
+ * One image id per player: which photo the player at each position of the deal gets.
+ *
+ * The pile can be any size next to the room, and every photo must be dealt once before any
+ * photo is dealt twice. So the pile is dealt in whole passes -- a fresh shuffle of all of it,
+ * appended until there are enough ids, then cut to the number of players. Each complete pass
+ * contributes every photo exactly once, so coverage and a balanced split fall out of that
+ * (3 photos to 7 players is 3-2-2, never 4-2-1), and reshuffling per pass is what keeps both
+ * the spares that go unused and the photo that gets the extra use random.
+ */
+function dealOrder(imageIds: readonly string[], players: number): string[] {
+  const deal: string[] = [];
+  // `dealImages` rejects an empty pile before here; this keeps the loop below from spinning
+  // forever for any other caller.
+  if (imageIds.length === 0) return deal;
+  while (deal.length < players) deal.push(...shuffled(imageIds));
+  return deal.slice(0, players);
+}
+
+/** Fisher-Yates. Used for the pile and for the seats, hence generic. */
+function shuffled<T>(items: readonly T[]): T[] {
+  const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [out[i], out[j]] = [out[j], out[i]];

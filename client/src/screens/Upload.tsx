@@ -1,10 +1,24 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useGame } from '../game';
 import { prepareImage, releasePreview } from '../lib/image';
-import { MIN_PLAYERS_TO_START } from '../types';
+import { MAX_POOL_IMAGES, MIN_PLAYERS_TO_START } from '../types';
 
-/** One hidden input, pointed at by the big drop target and by every empty slot. */
+/** One hidden input, pointed at by the big drop target and by the slot at the end of the pile. */
 const PHOTO_INPUT_ID = 'pool-photo';
+
+/**
+ * What this particular pile will do once it is dealt, in one sentence. Every photo is dealt
+ * before any photo repeats, so the outcome follows from these two numbers alone -- and the host
+ * should never have to work it out from them.
+ */
+function dealNote(have: number, players: number): string {
+  if (have === 0) return 'Nothing in it yet — one photo is enough to play.';
+  if (have === 1) return '1 photo — everyone captions the same one.';
+  const pile = `${have} photos for ${players} player${players === 1 ? '' : 's'}`;
+  if (have < players) return `${pile} — some photos get shared.`;
+  if (have === players) return `${pile} — everyone gets their own.`;
+  return `${pile} — everyone gets their own, the spares sit this round out.`;
+}
 
 export function Upload() {
   const { state, isHost, connected, addImage, removeImage, dealImages, backToLobby, leaveRoom } =
@@ -36,7 +50,8 @@ export function Upload() {
   );
 
   const poolIds = (state?.pool ?? []).map((img) => img.id).join(' ');
-  const poolNeeded = state?.poolNeeded ?? 0;
+  /** Read live every render: someone joining or leaving changes what the pile will do. */
+  const playerCount = state?.players.length ?? 0;
 
   // A photo that has left the pool -- removed, or the round moved on -- takes its blob with it.
   useEffect(() => {
@@ -55,42 +70,44 @@ export function Upload() {
     });
   }, [poolIds]);
 
-  // A refused deal is always about the pile and the table disagreeing, so the moment either
-  // side moves the message is describing a room that no longer exists.
+  // A refused deal is always about the pile or the table, so the moment either side moves the
+  // message is describing a room that no longer exists.
   useEffect(() => {
     setDealError(null);
-  }, [poolIds, poolNeeded]);
+  }, [poolIds, playerCount]);
 
   if (!state) return null;
   const room = state;
 
   const host = room.players.find((p) => p.id === room.hostId);
   const have = room.pool.length;
-  // Read live every render: a player joining or leaving moves the target under the host.
-  const needed = poolNeeded;
-  /** Negative once someone has left and the pile is bigger than the table. */
-  const missing = needed - have;
-  const emptySlots = Math.max(0, missing);
-  const count = `${have} of ${needed} photo${needed === 1 ? '' : 's'}`;
+  /** The only hard number left: there is no pile size to reach, just one not to pass. */
+  const full = have >= MAX_POOL_IMAGES;
+  const count = `${have} photo${have === 1 ? '' : 's'}`;
   /** The server re-checks this at the deal, so don't offer a button it is going to refuse. */
-  const tooFew = needed < MIN_PLAYERS_TO_START;
+  const tooFew = playerCount < MIN_PLAYERS_TO_START;
+  /** Not a requirement any more -- just the number a host who wants one each is aiming for. */
+  const uniqueHint =
+    !tooFew && have < playerCount
+      ? `Make it ${playerCount} and everyone gets a different one.`
+      : null;
 
   async function onPick(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = ''; // so picking the same file twice still fires change
     if (files.length === 0 || uploading) return;
-    // The camera roll can sit open while someone leaves the room, so the slots we were counting
-    // on may be gone by the time the photos come back. Say so rather than swallow the pick.
-    const slots = Math.max(0, missing);
-    if (slots === 0) {
-      setPhotoError('The pile is full now — drop one before adding another.');
+    // Nothing offers the picker once the pile is full, but a pick already in the air deserves a
+    // sentence rather than photos squeezed only for the server to turn them down.
+    const slots = MAX_POOL_IMAGES - have;
+    if (slots <= 0) {
+      setPhotoError(`The pile is full at ${MAX_POOL_IMAGES} — drop one before adding another.`);
       return;
     }
     setPhotoError(null);
     setUploading(true);
     try {
-      // Free slots are counted once per batch: the server is the real gatekeeper, this only
-      // saves us squeezing photos it is about to refuse.
+      // Room left in the pile is counted once per batch: the server is the real gatekeeper, this
+      // only saves us squeezing photos it is about to refuse.
       for (const file of files.slice(0, slots)) {
         // One bad pick -- a GIF out of the gallery, a refused ack, a timeout on a weak uplink --
         // must not throw away the rest of a batch the host chose on purpose.
@@ -163,10 +180,12 @@ export function Upload() {
           <div className="empty">
             <span className="spinner" />
             <p className="subtitle">
-              {host ? host.name : 'The host'} is picking the photos… {have} of {needed}
+              {host ? host.name : 'The host'} is picking the photos…{' '}
+              {have === 0 ? 'nothing yet' : `${have} so far`}
             </p>
             <p className="hint">
-              One each, dealt at random. You find out which one you got when the clock starts.
+              Dealt at random once the host is happy with the pile. You find out which photo you
+              got when the clock starts.
             </p>
           </div>
         </div>
@@ -188,11 +207,13 @@ export function Upload() {
       <div className="screen-head stack">
         <span className="label">Round {room.round}</span>
         <h1 className="title">Pick the photos</h1>
-        <p className="subtitle">One per player, dealt at random. Nobody gets to choose.</p>
+        <p className="subtitle">As many as you like, dealt at random. Nobody gets to choose.</p>
       </div>
 
       <div className="screen-body stack">
-        {emptySlots > 0 && (
+        {/* The picker stays put through a batch that fills the pile, because the squeezing state
+            lives inside it. */}
+        {(!full || uploading) && (
           <label className="file-drop" htmlFor={PHOTO_INPUT_ID}>
             {uploading ? (
               <>
@@ -212,6 +233,13 @@ export function Upload() {
           </label>
         )}
 
+        {full && !uploading && (
+          <p className="hint">
+            The pile is full — {MAX_POOL_IMAGES} photos is the limit. Drop one to make room for
+            another.
+          </p>
+        )}
+
         {/* Disabled while a batch is in flight: a label cannot activate a disabled control, so
             the big target goes inert instead of opening a picker whose photo we would drop. */}
         <input
@@ -229,36 +257,35 @@ export function Upload() {
           <span className="pill">{count}</span>
         </div>
 
-        <div className="x-photo-grid">
-          {room.pool.map((img, i) => (
-            <div className="x-photo" key={img.id}>
-              <img className="x-photo-img" src={previews[img.id] ?? img.imageUrl} alt="" />
-              <button
-                type="button"
-                className="x-photo-remove"
-                aria-label={`Remove photo ${i + 1}`}
-                disabled={uploading || removingId !== null || dealing}
-                onClick={() => onRemove(img.id)}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-          {/* Every slot this round needs is on screen from the start, so the grid does not
-              shuffle itself about as photos land one by one. Each one is another label for the
-              same input: a dashed "+" box that did nothing would be a trap, and once the host
-              has scrolled down to the pile it is the only "add" affordance in view. */}
-          {Array.from({ length: emptySlots }, (_, i) => (
-            <label
-              className="x-photo-slot"
-              htmlFor={PHOTO_INPUT_ID}
-              key={`slot-${i}`}
-              aria-label="Add a photo"
-            >
-              +
-            </label>
-          ))}
-        </div>
+        <p className="hint">{dealNote(have, playerCount)}</p>
+        {uniqueHint && <p className="hint">{uniqueHint}</p>}
+
+        {have > 0 && (
+          <div className="x-photo-grid">
+            {room.pool.map((img, i) => (
+              <div className="x-photo" key={img.id}>
+                <img className="x-photo-img" src={previews[img.id] ?? img.imageUrl} alt="" />
+                <button
+                  type="button"
+                  className="x-photo-remove"
+                  aria-label={`Remove photo ${i + 1}`}
+                  disabled={uploading || removingId !== null || dealing}
+                  onClick={() => onRemove(img.id)}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {/* One more label for the same input, sitting at the end of the pile: there is no
+                size to fill in any more, and once the host has scrolled down here the big target
+                above is off screen. A dashed "+" box that did nothing would be a trap. */}
+            {!full && (
+              <label className="x-photo-slot" htmlFor={PHOTO_INPUT_ID} aria-label="Add a photo">
+                +
+              </label>
+            )}
+          </div>
+        )}
 
         {have > 0 && <p className="hint">Tap ✕ on one you regret.</p>}
       </div>
@@ -267,7 +294,7 @@ export function Upload() {
         <button
           type="button"
           className="btn btn-primary btn-block"
-          disabled={missing !== 0 || tooFew || uploading || dealing || !connected}
+          disabled={have === 0 || tooFew || uploading || dealing || !connected}
           onClick={onDeal}
         >
           {dealing ? (
@@ -279,26 +306,12 @@ export function Upload() {
             'Deal them out'
           )}
         </button>
-        {tooFew ? (
+        {tooFew && (
           <p className="hint">
             Everyone else left — wait for someone to come back, or head back to the lobby.
           </p>
-        ) : (
-          <>
-            {missing > 0 && (
-              <p className="hint">
-                {missing === 1 ? 'One more photo' : `${missing} more photos`} and the button wakes
-                up.
-              </p>
-            )}
-            {missing < 0 && (
-              <p className="hint">
-                Fewer players than photos now — drop {-missing === 1 ? 'one' : -missing} and the
-                button wakes up.
-              </p>
-            )}
-          </>
         )}
+        {!tooFew && have === 0 && <p className="hint">One photo and the button wakes up.</p>}
         {/* Every error lands in the footer, photo ones included: the body is the only scroller,
             and once the host has scrolled down to the pile anything above it is off screen. */}
         {photoError && (

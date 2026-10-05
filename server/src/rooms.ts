@@ -229,6 +229,9 @@ export function voteCounts(room: Room): Map<string, number> {
 /**
  * Deterministic but deliberately not join order: everyone sees the same list, and a
  * position in it says nothing about who made the meme.
+ *
+ * One row per player and keyed by the player, never by the photo: two players dealt the same
+ * photo are two separate memes to look at and vote on, so nothing here may fold them together.
  */
 export function roundSubmissions(
   room: Room,
@@ -318,10 +321,6 @@ export function publicState(room: Room): RoomState {
     endsAt: room.phase === 'create' || room.phase === 'vote' ? room.endsAt : null,
     serverNow: Date.now(),
     pool,
-    // Seats, not sockets. `upload` has no clock, so phones lock while the host rummages --
-    // counting sockets would move the host's target mid-pick and leave the woken-up player
-    // with no photo. A seat already survives the whole round, so it is the honest unit.
-    poolNeeded: room.players.size,
     assignments,
     submittedIds: inRound ? idsWhere(room, (p) => p.submission !== null) : [],
     votedIds: inRound ? idsWhere(room, (p) => p.votedFor !== null) : [],
